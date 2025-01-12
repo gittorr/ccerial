@@ -17,20 +17,19 @@
  */
 package org.gittorr.ccerial;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NonNull;
 
-/**
- * Override the behavior of the serialization for specific fields.
- */
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.RECORD_COMPONENT})
-@Retention(RetentionPolicy.CLASS)
-public @interface CcValue {
+@AllArgsConstructor
+@Getter
+@CcSerializable(accessorType = AccessorType.CONSTRUCTOR)
+public class TestLombokClass {
 
-    boolean variableSize() default false;
-
-    boolean nullIsZeroOrEmpty() default true;
+    @NonNull
+    private long id;
+    @NonNull
+    private byte[] data;
+    private String name;
 
 }

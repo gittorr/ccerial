@@ -1,3 +1,20 @@
+/*
+ * Copyright 2025 GitTorr
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * For inquiries, visit https://gittorr.org
+ */
 package org.gittorr.ccerial.utils;
 
 import org.gittorr.ccerial.utils.impl.ArrayFieldAccessorWriter;
@@ -30,6 +47,8 @@ public final class FieldAccessorWriterManager {
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.CHAR, true, "char", "writeChar", "readChar"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.INT, false, "int", "writeInt", "readInt"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.INT, true, "int", "writeVarInt", "readVarInt"));
+        addAccessor(new SimpleFieldAccessorWriter(TypeKind.LONG, false, "long", "writeLong", "readLong"));
+        addAccessor(new SimpleFieldAccessorWriter(TypeKind.LONG, true, "long", "writeVarLong", "readVarLong"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.FLOAT, false, "float", "writeFloat", "readFloat"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.FLOAT, true, "float", "writeVarFloat", "readVarFloat"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.DOUBLE, false, "double", "writeDouble", "readDouble"));
@@ -47,6 +66,8 @@ public final class FieldAccessorWriterManager {
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.DECLARED, true, "java.lang.Character", "writeChar", "readChar"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.DECLARED, false, "java.lang.Integer", "writeInt", "readInt"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.DECLARED, true, "java.lang.Integer", "writeVarInt", "readVarInt"));
+        addAccessor(new SimpleFieldAccessorWriter(TypeKind.DECLARED, false, "java.lang.Long", "writeLong", "readLong"));
+        addAccessor(new SimpleFieldAccessorWriter(TypeKind.DECLARED, true, "java.lang.Long", "writeVarLong", "readVarLong"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.DECLARED, false, "java.lang.Float", "writeFloat", "readFloat"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.DECLARED, true, "java.lang.Float", "writeFloat", "readFloat"));
         addAccessor(new SimpleFieldAccessorWriter(TypeKind.DECLARED, false, "java.lang.Double", "writeDouble", "readDouble"));
@@ -62,6 +83,8 @@ public final class FieldAccessorWriterManager {
         addAccessor(new ArrayFieldAccessorWriter(TypeKind.ARRAY, true, "char[]", "writeChars", "readChars"));
         addAccessor(new ArrayFieldAccessorWriter(TypeKind.ARRAY, false, "int[]", "writeInts", "readInts"));
         addAccessor(new ArrayFieldAccessorWriter(TypeKind.ARRAY, true, "int[]", "writeInts", "readInts"));
+        addAccessor(new ArrayFieldAccessorWriter(TypeKind.ARRAY, false, "long[]", "writeLongs", "readLongs"));
+        addAccessor(new ArrayFieldAccessorWriter(TypeKind.ARRAY, true, "long[]", "writeLongs", "readLongs"));
         addAccessor(new ArrayFieldAccessorWriter(TypeKind.ARRAY, false, "float[]", "writeFloats", "readFloats"));
         addAccessor(new ArrayFieldAccessorWriter(TypeKind.ARRAY, true, "float[]", "writeFloats", "readFloats"));
         addAccessor(new ArrayFieldAccessorWriter(TypeKind.ARRAY, false, "double[]", "writeDoubles", "readDoubles"));
@@ -75,6 +98,8 @@ public final class FieldAccessorWriterManager {
         addAccessor(new ObjectArrayFieldAccessorWriter(TypeKind.ARRAY, true, "java.lang.Character", "writeChar", "readChar"));
         addAccessor(new ObjectArrayFieldAccessorWriter(TypeKind.ARRAY, false, "java.lang.Integer", "writeInt", "readInt"));
         addAccessor(new ObjectArrayFieldAccessorWriter(TypeKind.ARRAY, true, "java.lang.Integer", "writeInt", "readInt"));
+        addAccessor(new ObjectArrayFieldAccessorWriter(TypeKind.ARRAY, false, "java.lang.Long", "writeLong", "readLong"));
+        addAccessor(new ObjectArrayFieldAccessorWriter(TypeKind.ARRAY, true, "java.lang.Long", "writeLong", "readLong"));
         addAccessor(new ObjectArrayFieldAccessorWriter(TypeKind.ARRAY, false, "java.lang.Float", "writeFloat", "readFloat"));
         addAccessor(new ObjectArrayFieldAccessorWriter(TypeKind.ARRAY, true, "java.lang.Float", "writeFloat", "readFloat"));
         addAccessor(new ObjectArrayFieldAccessorWriter(TypeKind.ARRAY, false, "java.lang.Double", "writeDouble", "readDouble"));
@@ -106,7 +131,7 @@ public final class FieldAccessorWriterManager {
             ArrayType at = (ArrayType) type;
             TypeMirror componentType = at.getComponentType();
             if (componentType.getKind().isPrimitive())
-                typeName = at.toString();
+                typeName = getTypeName(at);
             else {
                 if (isWrapperType(componentType)) {
                     typeName = componentType.toString();
@@ -115,8 +140,18 @@ public final class FieldAccessorWriterManager {
                 }
             }
         } else {
-            typeName = type.toString();
+            typeName = getTypeName(type);
         }
         return ACCESSORS.get(new SimpleFieldAccessorWriter(kind, variable, typeName, null, null));
+    }
+
+    public static String getTypeName(TypeMirror type) {
+        String typeString = type.toString();
+        int annotationStart = typeString.lastIndexOf('@');
+        if (annotationStart != -1) {
+            int spcIdx = typeString.indexOf(' ', annotationStart);
+            return typeString.substring(spcIdx + 1);
+        }
+        return typeString;
     }
 }

@@ -17,20 +17,37 @@
  */
 package org.gittorr.ccerial;
 
-import java.lang.annotation.ElementType;
-import java.lang.annotation.Retention;
-import java.lang.annotation.RetentionPolicy;
-import java.lang.annotation.Target;
+import java.util.List;
 
-/**
- * Override the behavior of the serialization for specific fields.
- */
-@Target({ElementType.FIELD, ElementType.METHOD, ElementType.RECORD_COMPONENT})
-@Retention(RetentionPolicy.CLASS)
-public @interface CcValue {
+@CcSerializable(accessorType = AccessorType.SETTER)
+public class TestClassSetters {
 
-    boolean variableSize() default false;
+    private Long id;
+    private String name;
+    private long[] bits;
 
-    boolean nullIsZeroOrEmpty() default true;
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public long[] getBits() {
+        return bits;
+    }
+
+    public void setBits(long[] bits) {
+        this.bits = bits;
+    }
 
 }
