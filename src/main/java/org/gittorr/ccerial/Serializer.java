@@ -51,4 +51,20 @@ public interface Serializer<E> {
      */
     E deserialize(InputStream in) throws IOException;
 
+    /**
+     * Enables or disables a specific serialization feature.
+     *
+     * @param feature the feature to be enabled or disabled
+     * @param enabled {@code true} to enable the feature, {@code false} to disable it
+     */
+    void setFeatureEnabled(SerializerFeature feature, boolean enabled);
+
+    /**
+     * Checks if a specific serialization feature is enabled.
+     *
+     * @param feature the feature to check
+     * @return {@code true} if the feature is enabled, {@code false} otherwise
+     */
+    boolean isFeatureEnabled(SerializerFeature feature);
+
 }

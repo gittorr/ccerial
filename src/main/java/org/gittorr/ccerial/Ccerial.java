@@ -17,6 +17,17 @@
  */
 package org.gittorr.ccerial;
 
+import org.gittorr.ccerial.utils.ClassIdentifierGenerator;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.InvocationTargetException;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.util.Enumeration;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.Map;
 
@@ -49,7 +60,38 @@ import java.util.Map;
  */
 public final class Ccerial {
 
-    private static final Map<Class<?>, Serializer<?>> serializersCache = new ConcurrentHashMap<>();
+    private static final Map<Class<?>, Constructor<Serializer<?>>> serializersCtorCache = new ConcurrentHashMap<>();
+    private static final Map<Integer, Constructor<Serializer<?>>> serializersCtorCacheByOid = new ConcurrentHashMap<>();
+
+    static {
+        try {
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+            Enumeration<URL> resources = classLoader.getResources("cerial/serializers.properties");
+            resources.asIterator().forEachRemaining(url -> {
+                Properties props = new Properties();
+                try {
+                    props.load(new FileInputStream(new File(url.toURI())));
+                } catch (IOException | URISyntaxException e) {
+                    throw new RuntimeException(e);
+                }
+                props.forEach((className, serializerClassName) -> {
+                    Integer oid = ClassIdentifierGenerator.INSTANCE.generateIdentifier(className.toString());
+                    try {
+                        Class<?> entityClass = Class.forName(className.toString());
+                        @SuppressWarnings("unchecked")
+                        Class<Serializer<?>> serializerClass = (Class<Serializer<?>>) Class.forName(serializerClassName.toString());
+                        Constructor<Serializer<?>> constructor = serializerClass.getDeclaredConstructor();
+                        serializersCtorCache.put(entityClass, constructor);
+                        serializersCtorCacheByOid.put(oid, constructor);
+                    } catch (NoSuchMethodException | ClassNotFoundException e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+            });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
 
     /**
      * Retrieves the serializer for the specified class.
@@ -62,36 +104,41 @@ public final class Ccerial {
      */
     @SuppressWarnings("unchecked")
     public static <E> Serializer<E> getSerializer(Class<E> forClass) {
-        // checks if the serializer is in the cache
-        Serializer<E> serializer = (Serializer<E>) serializersCache.get(forClass);
-        if (serializer != null) {
-            return serializer;
-        }
 
-        // Build the qualified name for the serializer class
-        String originalClassName = forClass.getName();
-        String serializerClassName = "ccerial." + originalClassName + "_CcerialSerializer";
+        Constructor<Serializer<?>> constructor = serializersCtorCache.get(forClass);
 
         try {
-            // Load the serializer class
-            Class<?> serializerClass = Class.forName(serializerClassName);
-
-            // Try to access a singleton
-            try {
-                serializer = (Serializer<E>) serializerClass.getField("INSTANCE").get(null);
-            } catch (NoSuchFieldException e) {
-                // if the singleton doesn't exist, instantiate one
-                serializer = (Serializer<E>) serializerClass.getDeclaredConstructor().newInstance();
+            if (constructor == null) {
+                // Build the qualified name for the serializer class
+                String originalClassName = forClass.getName();
+                String serializerClassName = "ccerial." + originalClassName + "_CcerialSerializer";
+                // Load the serializer class
+                Class<Serializer<?>> serializerClass = (Class<Serializer<?>>) Class.forName(serializerClassName);
+                constructor = serializerClass.getDeclaredConstructor();
+                serializersCtorCache.put(forClass, constructor);
             }
 
-            // Store the serializer in the cache
-            serializersCache.put(forClass, serializer);
+            return (Serializer<E>) constructor.newInstance();
 
-            return serializer;
         } catch (ClassNotFoundException e) {
+            String originalClassName = forClass.getName();
             throw new IllegalArgumentException("Serializer class not found for " + originalClassName, e);
         } catch (Exception e) {
+            String originalClassName = forClass.getName();
             throw new RuntimeException("Failed to instantiate serializer for " + originalClassName, e);
+        }
+    }
+
+    public static <E> Serializer<E> getSerializer(int objectId) {
+        Constructor<Serializer<?>> constructor = serializersCtorCacheByOid.get(objectId);
+        if (constructor == null)
+            throw new IllegalArgumentException("Serializer class not found for object ID " + objectId);
+        try {
+            @SuppressWarnings("unchecked")
+            Serializer<E> serializer = (Serializer<E>) constructor.newInstance();
+            return serializer;
+        } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            throw new IllegalArgumentException("Failed to instantiate serializer for object ID " + objectId, e);
         }
     }
 }

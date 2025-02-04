@@ -23,6 +23,8 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
 
 /**
  * Override the default behavior for arrays, collections or strings
@@ -47,5 +49,20 @@ public @interface CcArray {
      * Serialize a string as an array of chars. The difference is that it will use wide char instead of a defined charset.
      */
     boolean stringAsCharArray() default false;
+
+    /**
+     * Define a fixed size for the components an array or collection
+     */
+    int componentCount() default -1;
+
+    /**
+     * The collection implementation for collections. Default is Collection, Ccerial will determine automatically
+     */
+    String collectionImpl() default "java.util.Collection";
+
+    /**
+     * After reading turns the collection into an unmodifiable one
+     */
+    boolean unmodifiableCollection() default false;
 
 }

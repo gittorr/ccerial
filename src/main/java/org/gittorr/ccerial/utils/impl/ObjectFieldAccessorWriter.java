@@ -28,41 +28,56 @@ import javax.lang.model.type.TypeKind;
 import java.io.IOException;
 import java.io.Writer;
 
-public class SimpleFieldAccessorWriter extends AbstractFieldAccessorWriter {
+public class ObjectFieldAccessorWriter extends AbstractFieldAccessorWriter {
 
-    public SimpleFieldAccessorWriter(TypeKind kind, boolean variable, String typeName) {
+    public ObjectFieldAccessorWriter(TypeKind kind, boolean variable, String typeName) {
         super(kind, variable, typeName);
     }
 
     @Override
     public void writeWriter(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
-        boolean nullIsZero = ccSerializable.nullIsZeroOrEmpty();
-        CcValue valueAnnot = CodeWriterUtils.getAnnotation(CcValue.class, fieldEl, accessorName, classElement);
-        if (valueAnnot != null && !fieldEl.asType().getKind().isPrimitive()) {
-            nullIsZero = valueAnnot.nullIsZeroOrEmpty();
+        CcValue annotation = CodeWriterUtils.getAnnotation(CcValue.class, fieldEl, accessorName, classElement);
+        boolean variable = this.variable;
+        String className = null;
+        if (annotation != null) {
+            variable = annotation.variableSize();
+            className = annotation.className();
         }
-        String writerMethodName = CodeWriterUtils.readerFor(this.typeName, this.variable, false);
-        out.write("\t\tBinaryUtils." + writerMethodName);
-        out.write(String.format(nullIsZero ? "(out, BinaryUtils.zeroIfNull(obj.%s));\n": "(out, obj.%s);\n", accessorName));
+        boolean dynamic = className == null || className.isEmpty();
+        String template = "\t\tBinaryUtils.writeObject(out, obj.<accessorName>, <if(dynamic)>null<else><className>.class<endif>, this);\n";
+        ST st = new ST(template);
+        st.add("dynamic", dynamic);
+        st.add("accessorName", accessorName);
+        st.add("className", className);
+
+        out.write(st.render());
     }
 
     @Override
     public void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
+        CcValue annotation = CodeWriterUtils.getAnnotation(CcValue.class, fieldEl, accessorName, classElement);
         String ctorArgName = toCtorArgName(accessorName, isRecord);
         String setterName = toSetterName(accessorName, isRecord);
+        boolean variable = this.variable;
+        String className = null;
+        if (annotation != null) {
+            variable = annotation.variableSize();
+            className = annotation.className();
+        }
         String typeName = CodeWriterUtils.getTypeName(fieldEl.asType());
+        boolean dynamic = className == null || className.isEmpty();
         String template = "\t\t<if(ctor)><typeName> <ctorArgName> = <else>obj.<setterName>(<endif>" +
-                "BinaryUtils.<readerMethodName>(in)" +
+                "BinaryUtils.readObject(in, <if(dynamic)>null<else><className>.class<endif>, this)" +
                 "<if(!ctor)>)<endif>;\n";
-        String readerMethodName = CodeWriterUtils.readerFor(this.typeName, this.variable, true);
         ST st = new ST(template);
         st.add("variable", variable);
         st.add("accessorName", accessorName);
         st.add("typeName", typeName);
+        st.add("className", className);
         st.add("ctorArgName", ctorArgName);
         st.add("setterName", setterName);
+        st.add("dynamic", dynamic);
         st.add("ctor", ccSerializable.accessorType() == AccessorType.CONSTRUCTOR);
-        st.add("readerMethodName", readerMethodName);
         out.write(st.render());
     }
 

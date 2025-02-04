@@ -20,7 +20,8 @@ package org.gittorr.ccerial.utils.impl;
 import org.gittorr.ccerial.AccessorType;
 import org.gittorr.ccerial.CcArray;
 import org.gittorr.ccerial.CcSerializable;
-import org.gittorr.ccerial.utils.FieldAccessorWriterManager;
+import org.gittorr.ccerial.CcValue;
+import org.gittorr.ccerial.utils.CodeWriterUtils;
 import org.stringtemplate.v4.ST;
 
 import javax.lang.model.element.Element;
@@ -30,53 +31,51 @@ import java.io.Writer;
 
 public class ArrayFieldAccessorWriter extends AbstractFieldAccessorWriter {
 
-    final String writerMethodName;
-    final String readerMethodName;
-
-    public ArrayFieldAccessorWriter(TypeKind kind, boolean variable, String typeName, String writerMethodName, String readerMethodName) {
+    public ArrayFieldAccessorWriter(TypeKind kind, boolean variable, String typeName) {
         super(kind, variable, typeName);
-        this.writerMethodName = writerMethodName;
-        this.readerMethodName = readerMethodName;
     }
 
     @Override
-    public void writeWriter(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord) throws IOException {
-        String variableCount = ", obj." + accessorName + ".length";
-        CcArray annotation = fieldEl.getAnnotation(CcArray.class);
+    public void writeWriter(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
+        String variableCount = ", -1";
+        CcArray annotation = CodeWriterUtils.getAnnotation(CcArray.class, fieldEl, accessorName, classElement);
         boolean nullIsEmpty = ccSerializable.nullIsZeroOrEmpty();
         String charset = "UTF-8";
+        boolean componentVariable = true;
         if (annotation != null) {
             variableCount = ", " + annotation.count();
             charset = annotation.stringCharsetName();
+            componentVariable = annotation.componentCount() == -1;
         }
-        String typeName = FieldAccessorWriterManager.getTypeName(fieldEl.asType());
+        String typeName = CodeWriterUtils.getTypeName(fieldEl.asType());
         boolean stringAsWchar = annotation != null && annotation.stringAsCharArray() && typeName.equals("java.lang.String");
         boolean isSstring = (annotation == null || !annotation.stringAsCharArray()) && typeName.equals("java.lang.String");
-        if (nullIsEmpty && variable)
-            out.write("\t\tif (BinaryUtils.isNullOrEmpty(obj." + accessorName + "))\n" +
-                    "\t\t\tout.write(0);\n\t\telse\n\t");
+        String writerMethodName = CodeWriterUtils.readerFor(this.typeName, this.variable, componentVariable, false);
         out.write("\t\tBinaryUtils." + (stringAsWchar ? "writeChars" : writerMethodName) +
-                "(out, obj." + accessorName + (stringAsWchar ? ".toCharArray()" : "") + (variable ? "" : variableCount) +
+                "(out, obj." + accessorName + (stringAsWchar ? ".toCharArray()" : "") + variableCount +
                 (!isSstring ? "" : (", \"" + charset + "\"")) +");\n");
     }
 
     @Override
-    public void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord) throws IOException {
-        String variableCount = "";
+    public void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
+        String variableCount = ", -1";
         String charset = "UTF-8";
-        CcArray annotation = fieldEl.getAnnotation(CcArray.class);
+        CcArray annotation = CodeWriterUtils.getAnnotation(CcArray.class, fieldEl, accessorName, classElement);
         String ctorArgName = toCtorArgName(accessorName, isRecord);
         String setterName = toSetterName(accessorName, isRecord);
+        boolean componentVariable = true;
         if (annotation != null) {
             variableCount = ", " + annotation.count();
             charset = annotation.stringCharsetName();
+            componentVariable = annotation.componentCount() == -1;
         }
-        String typeName = FieldAccessorWriterManager.getTypeName(fieldEl.asType());
+        String typeName = CodeWriterUtils.getTypeName(fieldEl.asType());
         boolean stringAsWchar = annotation != null && annotation.stringAsCharArray() && typeName.equals("java.lang.String");
         boolean isString = (annotation == null || !annotation.stringAsCharArray()) && typeName.equals("java.lang.String");
         String template = "\t\t<if(ctor)><typeName> <ctorArgName> = <else>obj.<setterName>(<endif>" +
                 "<if(stringAsWchar)>new String(<endif>BinaryUtils.<readerMethodName>(in<variableCount><if(isString)>, \"<charset>\"<endif>)<if(stringAsWchar)>)<endif>"+
                 "<if(!ctor)>)<endif>;\n";
+        String readerMethodName = CodeWriterUtils.readerFor(this.typeName, this.variable, componentVariable, true);
         ST st = new ST(template);
         st.add("variable", variable);
         st.add("stringAsWchar", stringAsWchar);

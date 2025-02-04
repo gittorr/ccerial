@@ -46,24 +46,28 @@ public interface FieldAccessorWriter {
 
     /**
      * Write writer
-     * @param out out
-     * @param accessorName the accessorName
-     * @param fieldEl the fieldEl
+     *
+     * @param out            out
+     * @param accessorName   the accessorName
+     * @param fieldEl        the fieldEl
      * @param ccSerializable the ccSerializable
-     * @param isRecord the isRecord
+     * @param isRecord       the isRecord
+     * @param classElement
      * @throws IOException the IOException
      */
-    void writeWriter(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord) throws IOException;
+    void writeWriter(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException;
 
     /**
      * Write reader
-     * @param out out
-     * @param accessorName the accessorName
-     * @param fieldEl the fieldEl
+     *
+     * @param out            out
+     * @param accessorName   the accessorName
+     * @param fieldEl        the fieldEl
      * @param ccSerializable the ccSerializable
-     * @param isRecord the isRecord
+     * @param isRecord       the isRecord
+     * @param classElement
      * @throws IOException the IOException
      */
-    void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord) throws IOException;
+    void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException;
 
 }

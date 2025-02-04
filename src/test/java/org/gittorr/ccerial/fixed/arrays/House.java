@@ -11,14 +11,11 @@ import org.gittorr.ccerial.CcSerializable;
 @Getter
 @Setter
 @AllArgsConstructor
-public class HouseItems {
+public class House {
 
-    @CcArray(count = 10, componentCount = 20)
-    private String[] itemNames;
+    private HouseItems[] items;
 
-    @CcArray(count = 10, componentCount = 0)
-    private double[] prices;
-
-    private HouseType type;
+    @CcArray(count = 3, componentCount = 3)
+    private double[][] metrics;
 
 }

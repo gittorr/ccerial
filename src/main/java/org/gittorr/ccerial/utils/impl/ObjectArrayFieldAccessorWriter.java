@@ -20,66 +20,97 @@ package org.gittorr.ccerial.utils.impl;
 import org.gittorr.ccerial.AccessorType;
 import org.gittorr.ccerial.CcArray;
 import org.gittorr.ccerial.CcSerializable;
+import org.gittorr.ccerial.CcValue;
+import org.gittorr.ccerial.utils.CodeWriterUtils;
 import org.stringtemplate.v4.ST;
 
 import javax.lang.model.element.Element;
 import javax.lang.model.type.ArrayType;
 import javax.lang.model.type.TypeKind;
+import javax.lang.model.type.TypeMirror;
 import java.io.IOException;
 import java.io.Writer;
 
 public class ObjectArrayFieldAccessorWriter extends AbstractFieldAccessorWriter {
 
-    final String writerMethodName;
-    final String readerMethodName;
-
-    public ObjectArrayFieldAccessorWriter(TypeKind kind, boolean variable, String typeName, String writerMethodName, String readerMethodName) {
+    public ObjectArrayFieldAccessorWriter(TypeKind kind, boolean variable, String typeName) {
         super(kind, variable, typeName);
-        this.writerMethodName = writerMethodName;
-        this.readerMethodName = readerMethodName;
     }
 
     @Override
-    public void writeWriter(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord) throws IOException {
-        String variableCount = ", obj." + accessorName + ".length";
-        CcArray annotation = fieldEl.getAnnotation(CcArray.class);
+    public void writeWriter(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
+        int variableCount = -1;
+        CcArray annotation = CodeWriterUtils.getAnnotation(CcArray.class, fieldEl, accessorName, classElement);
         String charset = "UTF-8";
+        int componentCount = -1;
         if (annotation != null) {
-            variableCount = ", " + annotation.count();
+            variableCount = annotation.count();
             charset = annotation.stringCharsetName();
+            componentCount = annotation.componentCount();
         }
-        String typeName = ((ArrayType) fieldEl.asType()).getComponentType().toString();
+        TypeMirror componentType = ((ArrayType) fieldEl.asType()).getComponentType();
+        String typeName = CodeWriterUtils.getTypeName(componentType);
+        String componentClass = CodeWriterUtils.isInterfaceOrAbstractClass(componentType) ? "null" : (typeName + ".class");
+        String writerMethodName = CodeWriterUtils.readerFor(typeName, variable, false);
+        boolean isObject = writerMethodName == null;
+        boolean isArray  = CodeWriterUtils.isArray(componentType);
         boolean stringArray = typeName.equals("java.lang.String");
-        String template = "\t\tBinaryUtils.writeGenericArray(out, obj.<accessorName><if(!variable)><variableCount><endif>"+
-                ", <if(stringArray)>BinaryUtils.createStringWriter(\"<charset>\")<else>BinaryUtils::<writerMethodName><endif>);\n";
+        String template = "\t\tBinaryUtils.writeGenericArray(out, obj.<accessorName>, <variableCount>, " +
+                "<if(isArray)>" +
+                    "(out2, v) -> BinaryUtils.<writerMethodName>(out2, v, <componentCount>)"+
+                "<else>" +
+                    "<if(isObject)>" +
+                        "(out2, v) -> BinaryUtils.writeObject(out2, v, <componentClass>, this)" +
+                    "<else>"+
+                        "<if(stringArray)>BinaryUtils.createStringWriter(<componentCount>, \"<charset>\")<else>BinaryUtils::<writerMethodName><endif>" +
+                    "<endif>" +
+                "<endif>);\n";
         ST st = new ST(template);
         st.add("stringArray", stringArray);
         st.add("charset", charset);
         st.add("variable", variable);
         st.add("accessorName", accessorName);
         st.add("variableCount", variableCount);
+        st.add("isObject", isObject);
+        st.add("isArray", isArray);
         st.add("typeName", typeName);
         st.add("writerMethodName", writerMethodName);
-
+        st.add("componentCount", componentCount);
+        st.add("componentClass", componentClass);
         out.write(st.render());
     }
 
     @Override
-    public void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord) throws IOException {
-        String variableCount = null;
-        CcArray annotation = fieldEl.getAnnotation(CcArray.class);
+    public void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
+        int variableCount = -1;
+        CcArray annotation = CodeWriterUtils.getAnnotation(CcArray.class, fieldEl, accessorName, classElement);
         String ctorArgName = toCtorArgName(accessorName, isRecord);
         String setterName = toSetterName(accessorName, isRecord);
         String charset = "UTF-8";
+        int componentCount = -1;
         if (annotation != null) {
-            variableCount = ", " + annotation.count();
+            variableCount = annotation.count();
             charset = annotation.stringCharsetName();
+            componentCount = annotation.componentCount();
         }
-        String typeName = ((ArrayType) fieldEl.asType()).getComponentType().toString();
+        TypeMirror componentType = ((ArrayType) fieldEl.asType()).getComponentType();
+        String typeName = CodeWriterUtils.getTypeName(componentType);
+        String componentClass = CodeWriterUtils.isInterfaceOrAbstractClass(componentType) ? "null" : (typeName + ".class");
+        String readerMethodName = CodeWriterUtils.readerFor(typeName, variable, componentCount == -1, true);
+        boolean isObject = readerMethodName == null;
+        boolean isArray  = CodeWriterUtils.isArray(componentType);
         boolean stringArray = typeName.equals("java.lang.String");
         String template = "\t\t<if(ctor)><typeName>[] <ctorArgName> = <else>obj.<setterName>(<endif>" +
-                "BinaryUtils.readGenericArray(in<if(!variable)><variableCount><endif>, " +
-                "<if(stringArray)>in1 -> BinaryUtils.<readerMethodName>(in1, \"<charset>\")<else>BinaryUtils::<readerMethodName><endif>, " +
+                "BinaryUtils.readGenericArray(in, <variableCount>, " +
+                "<if(isArray)>" +
+                    "(in2) -> BinaryUtils.<readerMethodName>(in2, <componentCount>)" +
+                "<else>" +
+                    "<if(isObject)>" +
+                        "(in2) -> BinaryUtils.readObject(in2, <componentClass>, this)" +
+                    "<else>" +
+                        "<if(stringArray)>in1 -> BinaryUtils.<readerMethodName>(in1, <componentCount>, \"<charset>\")<else>BinaryUtils::<readerMethodName><endif>" +
+                    "<endif>" +
+                "<endif>, " +
                 "<typeName>[]::new)" +
                 "<if(!ctor)>)<endif>;\n";
         ST st = new ST(template);
@@ -88,11 +119,15 @@ public class ObjectArrayFieldAccessorWriter extends AbstractFieldAccessorWriter 
         st.add("charset", charset);
         st.add("accessorName", accessorName);
         st.add("variableCount", variableCount);
+        st.add("isObject", isObject);
+        st.add("isArray", isArray);
         st.add("typeName", typeName);
         st.add("ctorArgName", ctorArgName);
         st.add("setterName", setterName);
         st.add("ctor", ccSerializable.accessorType() == AccessorType.CONSTRUCTOR);
         st.add("readerMethodName", readerMethodName);
+        st.add("componentCount", componentCount);
+        st.add("componentClass", componentClass);
         out.write(st.render());
     }
 

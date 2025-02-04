@@ -19,16 +19,14 @@ package org.gittorr.ccerial.utils;
 
 import org.gittorr.ccerial.Ccerial;
 import org.gittorr.ccerial.Serializer;
+import org.gittorr.ccerial.SerializerFeature;
 
-import java.io.EOFException;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
+import java.io.*;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.Stream;
 
 /**
  * Binary utilities class.
@@ -103,28 +101,37 @@ public final class BinaryUtils {
         return map == null || map.isEmpty();
     }
 
-    public static <T> void writeCollection(OutputStream out, Collection<T> ar, WriterFunction<T> componentWriter) throws IOException {
-        if (ar == null || ar.isEmpty()) {
-            out.write(0);
-        } else {
-            writeVarInt(out, ar.size());
-            for (T t : ar) componentWriter.write(out, t);
+    public static <T, V> V getFieldIfNotNull(T obj, Function<T, V> getter) {
+        if (obj == null) {
+            return null;
         }
+        return getter.apply(obj);
+    }
+
+    public static <T, V> V getFieldOrDefault(T obj, Function<T, V> getter, V defaultValue) {
+        if (obj == null) {
+            return defaultValue;
+        }
+        V value = getter.apply(obj);
+        return (value == null) ? defaultValue : value;
     }
 
     public static <T> void writeCollection(OutputStream out, Collection<T> ar, int count, WriterFunction<T> componentWriter) throws IOException {
+        int size = ar != null ? ar.size() : 0;
+        if (count == -1) {
+            writeVarInt(out, size);
+            count = size;
+        }
         Iterator<T> it = ar != null ? ar.iterator() : null;
         for (int i = 0; i < count; i++) {
             componentWriter.write(out, ar != null && i < ar.size() ? it.next() : null);
         }
     }
 
-    public static <T> Collection<T> readCollection(InputStream in, ReaderFunction<T> componentReader, Function<Integer, Collection<T>> creator) throws IOException {
-        int count = readVarInt(in);
-        return readCollection(in, count, componentReader, creator);
-    }
-
-    public static <T> Collection<T> readCollection(InputStream in, int count, ReaderFunction<T> componentReader, Function<Integer, Collection<T>> creator) throws IOException {
+    public static <T> Collection readCollection(InputStream in, int count, ReaderFunction<T> componentReader, Function<Integer, Collection<T>> creator) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
         Collection<T> ar = creator.apply(count);
         for (int i = 0; i < count; i++) {
             ar.add(componentReader.read(in));
@@ -132,27 +139,21 @@ public final class BinaryUtils {
         return ar;
     }
 
-    public static <T> void writeGenericArray(OutputStream out, T[] ar, WriterFunction<T> componentWriter) throws IOException {
-        if (ar == null || ar.length == 0) {
-            out.write(0);
-        } else {
-            writeVarInt(out, ar.length);
-            for (T t : ar) componentWriter.write(out, t);
-        }
-    }
-
-    public static <T> T[] readGenericArray(InputStream in, ReaderFunction<T> componentReader, Function<Integer, T[]> creator) throws IOException {
-        int count = readVarInt(in);
-        return readGenericArray(in, count, componentReader, creator);
-    }
-
     public static <T> void writeGenericArray(OutputStream out, T[] ar, int count, WriterFunction<T> componentWriter) throws IOException {
+        int length = ar != null ? ar.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
+        }
         for (int i = 0; i < count; i++) {
             componentWriter.write(out, ar != null && i < ar.length ? ar[i] : null);
         }
     }
 
     public static <T> T[] readGenericArray(InputStream in, int count, ReaderFunction<T> componentReader, Function<Integer, T[]> creator) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
         T[] ar = creator.apply(count);
         for (int i = 0; i < count; i++) {
             ar[i] = componentReader.read(in);
@@ -160,113 +161,153 @@ public final class BinaryUtils {
         return ar;
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    public static void writeObject(OutputStream out, Object obj) throws IOException {
+    public static <U, V> void writeObject(OutputStream out, V obj, Class<V> type, Serializer<U> father) throws IOException {
         if (obj == null) {
             out.write(0);
         } else {
-            Serializer serializer = Ccerial.getSerializer(obj.getClass());
-            if (serializer != null)
-                serializer.serialize(out, obj);
-            else
-                throw new IOException("Can't serialize an unknown object type: " + obj.getClass().getName());
+            @SuppressWarnings({"unchecked"})
+            Class<V> c = type != null ? type : (Class<V>) obj.getClass();
+            Serializer<V> serializer = Ccerial.getSerializer(c);
+            if (father != null)
+                copyFeatures(father, serializer);
+            if (type == null)
+                serializer.setFeatureEnabled(SerializerFeature.FORCE_HEADERS, true);
+            serializer.serialize(out, obj);
         }
     }
 
-    public static <T> T readObject(InputStream in, Class<T> type) throws IOException {
-        Serializer<T> serializer = Ccerial.getSerializer(type);
-        if (serializer != null)
-            return serializer.deserialize(in);
-        else
-            throw new IOException("Can't serialize an unknown object type: " + type.getName());
+    public static <T, U> T readObject(InputStream in, Class<T> type, Serializer<U> father) throws IOException {
+        Serializer<T> serializer;
+        if (type == null) {
+            BufferedInputStream bis = new BufferedInputStream(in);
+            bis.mark(8);
+            int oid = readInt(bis);
+            int version = readInt(bis);
+            if (version != 0) throw new IllegalStateException("Versioning is not yet supported!");
+            bis.reset();
+            in = bis;
+            serializer = Ccerial.getSerializer(oid);
+            if (father != null)
+                copyFeatures(father, serializer);
+            serializer.setFeatureEnabled(SerializerFeature.FORCE_HEADERS, true);
+        } else {
+            serializer = Ccerial.getSerializer(type);
+            if (father != null)
+                copyFeatures(father, serializer);
+        }
+        return serializer.deserialize(in);
     }
 
-    public static void writeFloats(OutputStream out, float[] fs) throws IOException {
-        writeVarInt(out, fs.length);
-        for (float f : fs) {
-            writeVarInt(out, Float.floatToRawIntBits(f));
-        }
+    private static <T, U> void copyFeatures(Serializer<U> father, Serializer<T> serializer) {
+        Stream.of(SerializerFeature.values()).forEach(feature -> serializer.setFeatureEnabled(feature, father.isFeatureEnabled(feature)));
     }
 
     public static void writeFloats(OutputStream out, float[] fs, int count) throws IOException {
+        int length = fs != null ? fs.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
+        }
         for (int i = 0; i < count; i++) {
-            writeInt(out, Float.floatToRawIntBits(fs != null && i < fs.length ? fs[i] : 0));
+            writeFloat(out, fs != null && i < length ? fs[i] : 0);
         }
     }
 
-    public static float[] readFloats(InputStream in) throws IOException {
-        int size = readVarInt(in);
-        float[] fs = new float[size];
-        for (int i = 0; i < size; i++) {
-            fs[i] = Float.intBitsToFloat(readVarInt(in));
+    public static void writeVarFloats(OutputStream out, float[] fs, int count) throws IOException {
+        int length = fs != null ? fs.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
         }
-        return fs;
+        for (int i = 0; i < count; i++) {
+            writeVarFloat(out, fs != null && i < length ? fs[i] : 0);
+        }
     }
 
     public static float[] readFloats(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
         float[] fs = new float[count];
         for (int i = 0; i < count; i++) {
-            fs[i] = Float.intBitsToFloat(readInt(in));
+            fs[i] = readFloat(in);
         }
         return fs;
     }
 
-    public static void writeDoubles(OutputStream out, double[] ds) throws IOException {
-        writeVarInt(out, ds.length);
-        for (double d : ds) {
-            writeVarLong(out, Double.doubleToLongBits(d));
+    public static float[] readVarFloats(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
         }
+        float[] fs = new float[count];
+        for (int i = 0; i < count; i++) {
+            fs[i] = readVarFloat(in);
+        }
+        return fs;
     }
 
     public static void writeDoubles(OutputStream out, double[] ds, int count) throws IOException {
+        int length = ds != null ? ds.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
+        }
         for (int i = 0; i < count; i++) {
-            writeLong(out, Double.doubleToLongBits(ds != null && i < ds.length ? ds[i] : 0d));
+            writeDouble(out, ds != null && i < ds.length ? ds[i] : 0d);
         }
     }
 
-    public static double[] readDoubles(InputStream in) throws IOException {
-        int size = readVarInt(in);
-        double[] ds = new double[size];
-        for (int i = 0; i < size; i++) {
-            ds[i] = Double.longBitsToDouble(readVarLong(in));
+    public static void writeVarDoubles(OutputStream out, double[] ds, int count) throws IOException {
+        int length = ds != null ? ds.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
         }
-        return ds;
+        for (int i = 0; i < count; i++) {
+            writeVarDouble(out, ds != null && i < ds.length ? ds[i] : 0d);
+        }
     }
 
     public static double[] readDoubles(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
         double[] ds = new double[count];
         for (int i = 0; i < count; i++) {
-            ds[i] = Double.longBitsToDouble(readLong(in));
+            ds[i] = readDouble(in);
         }
         return ds;
     }
 
-    public static void writeChars(OutputStream out, char[] chars) throws IOException {
-        writeVarInt(out, chars.length);
-        for (char ch : chars) {
-            writeChar(out, ch);
+    public static double[] readVarDoubles(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
         }
+        double[] ds = new double[count];
+        for (int i = 0; i < count; i++) {
+            ds[i] = readVarDouble(in);
+        }
+        return ds;
     }
 
     public static void writeChars(OutputStream out, char[] chars, int count) throws IOException {
+        int length = chars != null ? chars.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
+        }
         for (int i = 0; i < count; i++) {
-            if (chars != null && i < chars.length)
+            if (chars != null && i < length)
                 writeChar(out, chars[i]);
             else
                 writeChar(out, (char) 0);
         }
     }
 
-    public static char[] readChars(InputStream in) throws IOException {
-        int count = readVarInt(in);
-        char[] chs = new char[count];
-        for ( int i = 0; i < count; i++) {
-            chs[i] = readChar(in);
-        }
-        return chs;
-    }
-
     public static char[] readChars(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
         char[] chs = new char[count];
         for ( int i = 0; i < count; i++) {
             chs[i] = readChar(in);
@@ -275,31 +316,37 @@ public final class BinaryUtils {
     }
 
     public static void writeInts(OutputStream out, int[] is, int count) throws IOException {
+        int length = is != null ? is.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
+        }
         for (int i = 0; i < count; i++) {
-            if (is != null && i < is.length)
+            if (is != null && i < length)
                 writeInt(out, is[i]);
             else
                 writeInt(out, 0);
         }
     }
 
-    public static void writeInts(OutputStream out, int[] is) throws IOException {
-        writeVarInt(out, is.length);
-        for (int i : is) {
-            writeVarInt(out, i);
+    public static void writeVarInts(OutputStream out, int[] is, int count) throws IOException {
+        int length = is != null ? is.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
         }
-    }
-
-    public static int[] readInts(InputStream in) throws IOException {
-        int size = readVarInt(in);
-        int[] is = new int[size];
-        for (int i = 0; i < size; i++) {
-            is[i] = readVarInt(in);
+        for (int i = 0; i < count; i++) {
+            if (is != null && i < length)
+                writeVarInt(out, is[i]);
+            else
+                writeVarInt(out, 0);
         }
-        return is;
     }
 
     public static int[] readInts(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
         int[] is = new int[count];
         for (int i = 0; i < count; i++) {
             is[i] = readInt(in);
@@ -307,32 +354,49 @@ public final class BinaryUtils {
         return is;
     }
 
-    public static void writeLongs(OutputStream out, long[] ls) throws IOException {
-        writeVarInt(out, ls.length);
-        for (long l : ls) {
-            writeVarLong(out, l);
+    public static int[] readVarInts(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
         }
+        int[] is = new int[count];
+        for (int i = 0; i < count; i++) {
+            is[i] = readVarInt(in);
+        }
+        return is;
     }
 
     public static void writeLongs(OutputStream out, long[] ls, int count) throws IOException {
+        int length = ls != null ? ls.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
+        }
         for (int i = 0; i < count; i++) {
-            if (ls != null && i < ls.length)
+            if (ls != null && i < length)
                 writeLong(out, ls[i]);
             else
                 writeLong(out, 0L);
         }
     }
 
-    public static long[] readLongs(InputStream in) throws IOException {
-        int size = readVarInt(in);
-        long[] ls = new long[size];
-        for (int i = 0; i < size; i++) {
-            ls[i] = readVarLong(in);
+    public static void writeVarLongs(OutputStream out, long[] ls, int count) throws IOException {
+        int length = ls != null ? ls.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
         }
-        return ls;
+        for (int i = 0; i < count; i++) {
+            if (ls != null && i < length)
+                writeVarLong(out, ls[i]);
+            else
+                writeVarLong(out, 0L);
+        }
     }
 
     public static long[] readLongs(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
         long[] ls = new long[count];
         for (int i = 0; i < count; i++) {
             ls[i] = readLong(in);
@@ -340,54 +404,56 @@ public final class BinaryUtils {
         return ls;
     }
 
-    public static void writeString(OutputStream out, String s, String charsetName) throws IOException {
-        writeBytes(out, s.getBytes(charsetName));
+    public static long[] readVarLongs(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
+        long[] ls = new long[count];
+        for (int i = 0; i < count; i++) {
+            ls[i] = readVarLong(in);
+        }
+        return ls;
     }
 
     public static void writeString(OutputStream out, String s, int count, String charsetName) throws IOException {
-        writeBytes(out, s.getBytes(charsetName), count);
+        writeBytes(out, s != null ? s.getBytes(charsetName) : null, count);
     }
 
-    public static WriterFunction<String> createStringWriter(final String charset) {
-        return (out, s) -> writeString(out, s, charset);
-    }
-
-    public static String readString(InputStream in, String charsetName) throws IOException {
-        byte[] bytes = readBytes(in);
-        return new String(bytes, charsetName);
+    public static WriterFunction<String> createStringWriter(final int count, final String charset) {
+        return (out, s) -> writeString(out, s, count, charset);
     }
 
     public static String readString(InputStream in, int count, String charsetName) throws IOException {
         byte[] bytes = readBytes(in, count);
-        int i = 0; for (; i < count && bytes[i] != 0; i++) { }
+        int i = 0; for (; i < bytes.length && bytes[i] != 0; i++) { }
         return new String(bytes, 0, i, charsetName);
     }
 
-    public static void writeBytes(OutputStream out, byte[] bytes) throws IOException {
-        writeVarInt(out, bytes.length);
-        out.write(bytes);
-    }
-
     public static void writeBytes(OutputStream out, byte[] bytes, int count) throws IOException {
+        int length = bytes != null ? bytes.length : 0;
+        if (count == -1) {
+            writeVarInt(out, length);
+            count = length;
+        }
         for (int i = 0; i < count; i++) {
-            if (bytes != null && i < bytes.length)
+            if (bytes != null && i < length)
                 out.write(bytes[i]);
             else
                 out.write(0);
         }
     }
 
-    public static byte[] readBytes(InputStream in) throws IOException {
-        int size = readVarInt(in);
-        byte[] result = new byte[size];
-        if (in.read(result) != size) throw newEndOfStreamException();
-        return result;
-    }
-
     public static byte[] readBytes(InputStream in, int count) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
         byte[] result = new byte[count];
         if (in.read(result) != count) throw newEndOfStreamException();
         return result;
+    }
+
+    public static void writeByte(OutputStream out, Byte b) throws IOException {
+        writeByte(out, b == null ? 0 : b);
     }
 
     public static void writeByte(OutputStream out, byte b) throws IOException {
@@ -404,12 +470,20 @@ public final class BinaryUtils {
         return new EOFException("Unexpected end of stream.");
     }
 
+    public static void writeBoolean(OutputStream out, Boolean b) throws IOException {
+        writeBoolean(out, b != null && b);
+    }
+
     public static void writeBoolean(OutputStream out, boolean b) throws IOException {
         out.write(b ? 1 : 0);
     }
 
     public static boolean readBoolean(InputStream in) throws IOException {
         return readByte(in) == 1;
+    }
+
+    public static void writeShort(OutputStream out, Character s) throws IOException {
+        writeShort(out, s == null ? 0 : s);
     }
 
     public static void writeShort(OutputStream out, short s) throws IOException {
@@ -421,6 +495,10 @@ public final class BinaryUtils {
         return (short) ((readByte(in) & 0xff) | ((readByte(in) & 0xff) << 8));
     }
 
+    public static void writeChar(OutputStream out, Character s) throws IOException {
+        writeChar(out, s == null ? 0 : s);
+    }
+
     public static void writeChar(OutputStream out, char s) throws IOException {
         out.write(s & 0xff);
         out.write((s >> 8) & 0xff);
@@ -430,12 +508,24 @@ public final class BinaryUtils {
         return (char) ((readByte(in) & 0xff) | ((readByte(in) & 0xff) << 8));
     }
 
+    public static void writeVarFloat(OutputStream out, Float value) throws IOException {
+        writeVarFloat(out, value == null ? 0f : value);
+    }
+
     public static void writeVarFloat(OutputStream out, float value) throws IOException {
         writeVarInt(out, Float.floatToRawIntBits(value));
     }
 
+    public static void writeFloat(OutputStream out, Float value) throws IOException {
+        writeFloat(out, value == null ? 0f : value);
+    }
+
     public static void writeFloat(OutputStream out, float value) throws IOException {
         writeInt(out, Float.floatToRawIntBits(value));
+    }
+
+    public static void writeVarInt(OutputStream out, Integer i) throws IOException {
+        writeVarInt(out, i == null ? 0 : i);
     }
 
     public static void writeVarInt(OutputStream out, int value) throws IOException {
@@ -446,6 +536,10 @@ public final class BinaryUtils {
         out.write(value & 0x7F);
     }
 
+    public static void writeInt(OutputStream out, Integer i) throws IOException {
+        writeInt(out, i == null ? 0 : i);
+    }
+
     public static void writeInt(OutputStream out, int i) throws IOException {
         out.write(i & 0xff);
         out.write((i >> 8) & 0xff);
@@ -453,12 +547,24 @@ public final class BinaryUtils {
         out.write((i >> 24) & 0xff);
     }
 
+    public static void writeVarDouble(OutputStream out, Double value) throws IOException {
+        writeVarDouble(out, value == null ? 0d : value);
+    }
+
     public static void writeVarDouble(OutputStream out, double value) throws IOException {
         writeVarLong(out, Double.doubleToLongBits(value));
     }
 
+    public static void writeDouble(OutputStream out, Double value) throws IOException {
+        writeDouble(out, value == null ? 0d : value);
+    }
+
     public static void writeDouble(OutputStream out, double value) throws IOException {
         writeLong(out, Double.doubleToLongBits(value));
+    }
+
+    public static void writeVarLong(OutputStream out, Long value) throws IOException {
+        writeVarLong(out, value == null ? 0L : value);
     }
 
     public static void writeVarLong(OutputStream out, long value) throws IOException {
@@ -467,6 +573,10 @@ public final class BinaryUtils {
             value >>>= 7;
         }
         out.write((int) (value & 0x7F));
+    }
+
+    public static void writeLong(OutputStream out, Long value) throws IOException {
+        writeLong(out, value == null ? 0L : value);
     }
 
     public static void writeLong(OutputStream out, long l) throws IOException {
