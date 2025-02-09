@@ -52,7 +52,7 @@ public @interface CcSerializable {
     /**
      * When serializing a null or empty become a zero.
      */
-    boolean nullIsZeroOrEmpty() default true;
+    boolean nullIsZeroOrEmpty() default false;
 
     /**
      * Include some headers if necessary

@@ -36,7 +36,6 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
 
     public CollectionFieldAccessorWriter(TypeKind kind, boolean variable, String typeName, TypeMirror componentType) {
         super(kind, variable, typeName);
-        String compTypeName = componentType != null ? componentType.toString() : "java.lang.Object";
     }
 
     @Override
@@ -57,7 +56,8 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
         String typeName = CodeWriterUtils.getTypeName(fieldEl.asType());
 
         TypeMirror componentType = CodeWriterUtils.getCollectionComponentType(fieldEl.asType());
-        String writerMethodName = CodeWriterUtils.readerFor(CodeWriterUtils.getTypeName(componentType), variable, false);
+        String writerMethodName = CodeWriterUtils.readerFor(CodeWriterUtils.getTypeName(componentType), componentCount == -1, false);
+        String writerMethodNameVar = CodeWriterUtils.readerFor(CodeWriterUtils.getTypeName(componentType), true, false);
         boolean isObject = writerMethodName == null;
         writerMethodName = writerMethodName != null ? writerMethodName : "writeObject";
         boolean componentIsString = componentType.toString().equals("java.lang.String");
@@ -65,7 +65,7 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
         String componentClass = CodeWriterUtils.isInterfaceOrAbstractClass(componentType) ? "null" : (CodeWriterUtils.getTypeName(componentType) + ".class");
         String collectionCtor = getCollectionCtor(collectionClass);
         String template = """
-                        BinaryUtils.writeCollection(out,obj.<accessorName>, <variableCount>,
+                        BinaryUtils.writeCollection(out,obj.<accessorName>, <if(!variable)>featureForceVariableSize ? -1 : <endif><variableCount>,
                         <if(isObject)>
                             (out2, v) -> BinaryUtils.<writerMethodName>(out2, v, <componentClass>, this)
                         <else>
@@ -73,8 +73,10 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
                                 <if(componentIsString)>(out2, v) -> BinaryUtils.<writerMethodName>(out2, v, <componentCount>, "<charset>")
                                 <else>BinaryUtils::<writerMethodName><endif>
                             <else>
-                                (out2, v) -> BinaryUtils.<writerMethodName>(out2, v
-                                <if(componentIsString)>, <componentCount>, "<charset>"<endif>)
+                                (out2, v) -> 
+                                    <if(componentIsString)>BinaryUtils.<writerMethodName>(out2, v, <componentCount>, "<charset>")
+                                    <else>writeWithFeature(BinaryUtils::<writerMethodNameVar>, BinaryUtils::<writerMethodName>,out2, v)
+                                    <endif>
                             <endif>
                         <endif>);
                 """;
@@ -91,6 +93,7 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
         st.add("typeName", typeName);
         st.add("collectionCtor", collectionCtor);
         st.add("writerMethodName", writerMethodName);
+        st.add("writerMethodNameVar", writerMethodNameVar);
         st.add("isObject", isObject);
         out.write(st.render());
     }
@@ -99,6 +102,8 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
     public void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
         int variableCount = -1;
         String charset = "UTF-8";
+        boolean variable = this.variable;
+        boolean nullIsEmpty = ccSerializable.nullIsZeroOrEmpty();
         CcArray annotation = CodeWriterUtils.getAnnotation(CcArray.class, fieldEl, accessorName, classElement);
         String ctorArgName = toCtorArgName(accessorName, isRecord);
         String setterName = toSetterName(accessorName, isRecord);
@@ -106,6 +111,8 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
         boolean unmodifiable = false;
         int componentCount = -1;
         if (annotation != null) {
+            nullIsEmpty = annotation.nullIsEmpty();
+            variable = annotation.count() == -1;
             variableCount = annotation.count();
             charset = annotation.stringCharsetName();
             collectionImpl = CodeWriterUtils.getTypeMirror(annotation.collectionImpl());
@@ -114,7 +121,8 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
         }
         String typeName = CodeWriterUtils.getTypeName(fieldEl.asType());
         TypeMirror componentType = CodeWriterUtils.getCollectionComponentType(fieldEl.asType());
-        String readerMethodName = CodeWriterUtils.readerFor(CodeWriterUtils.getTypeName(componentType), variable, true);
+        String readerMethodName = CodeWriterUtils.readerFor(CodeWriterUtils.getTypeName(componentType), componentCount == -1, true);
+        String readerMethodNameVar = CodeWriterUtils.readerFor(CodeWriterUtils.getTypeName(componentType), true, true);
         boolean isObject = readerMethodName == null;
         readerMethodName = readerMethodName != null ? readerMethodName : "readObject";
 
@@ -125,18 +133,26 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
         String template = """
                         <if(ctor)><typeName> <ctorArgName> = <else>obj.<setterName>(<endif>
                             <if(unmodifiable)>CollectionUtils.makeUnmodifiable(<endif>
-                            (<typeName>)BinaryUtils.readCollection(in, <variableCount>, 
+                            <if(variable)>nullIfEmptyOrZero(<endif>
+                            (<typeName>)BinaryUtils.readCollection(in, <if(!variable)>featureForceVariableSize ? -1 : <endif><variableCount>, 
                             <if(isObject)>
                                 (in2) -> BinaryUtils.<readerMethodName>(in2, <componentClass>, this)
                             <else>
-                                <if(componentVariable)><if(componentIsString)>(in2) -> BinaryUtils.<readerMethodName>(in2, <componentCount>, "<charset>")<else>BinaryUtils::<readerMethodName><endif>
-                                <else>(in2) -> BinaryUtils.<readerMethodName>(in2<if(componentIsString)>, <componentCount>, "<charset>"<endif>)<endif>
-                            <endif>, <collectionCtor>)
+                                <if(componentVariable)>
+                                    <if(componentIsString)>(in2) -> BinaryUtils.<readerMethodName>(in2, <componentCount>, "<charset>")
+                                    <else>BinaryUtils::<readerMethodName><endif>  
+                                <else>
+                                    (in2) -> 
+                                        <if(componentIsString)>BinaryUtils.<readerMethodName>(in2, featureForceVariableSize ? -1 : <componentCount>, "<charset>")
+                                        <else>featureForceVariableSize ? BinaryUtils.<readerMethodNameVar>(in2) : BinaryUtils.<readerMethodName>(in2)<endif>
+                                <endif>
+                            <endif>, <collectionCtor>)<if(variable)>, <nullIsEmpty>)<endif>
                             <if(unmodifiable)>)<endif>
                         <if(!ctor)>)<endif>;
                 """;
         ST st = new ST(template);
         st.add("variable", variable);
+        st.add("nullIsEmpty", nullIsEmpty);
         st.add("charset", charset);
         st.add("accessorName", accessorName);
         st.add("variableCount", variableCount);
@@ -151,6 +167,7 @@ public class CollectionFieldAccessorWriter extends AbstractFieldAccessorWriter {
         st.add("setterName", setterName);
         st.add("ctor", ccSerializable.accessorType() == AccessorType.CONSTRUCTOR);
         st.add("readerMethodName", readerMethodName);
+        st.add("readerMethodNameVar", readerMethodNameVar);
         st.add("isObject", isObject);
         out.write(st.render());
     }

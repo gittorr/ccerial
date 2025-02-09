@@ -116,6 +116,36 @@ public final class BinaryUtils {
         return (value == null) ? defaultValue : value;
     }
 
+    public static <K, V> void writeMap(OutputStream out, Map<K, V> map, int count, WriterFunction<K> keyWriter, WriterFunction<V> valueWriter) throws IOException {
+        int size = map != null ? map.size() : 0;
+        if (count == -1) {
+            writeVarInt(out, size);
+            count = size;
+        }
+        Iterator<Map.Entry<K, V>> it = map != null ? map.entrySet().iterator() : null;
+        for (int i = 0; i < count; i++) {
+            if (map != null && i < map.size()) {
+                Map.Entry<K, V> entry = it.next();
+                keyWriter.write(out, entry.getKey());
+                valueWriter.write(out, entry.getValue());
+            } else {
+                keyWriter.write(out, null);
+                valueWriter.write(out, null);
+            }
+        }
+    }
+
+    public static <K, V> Map<K, V> readMap(InputStream in, int count, ReaderFunction<K> keyReader, ReaderFunction<V> valueReader, Function<Integer, Map<K,V>> creator) throws IOException {
+        if (count == -1) {
+            count = readVarInt(in);
+        }
+        Map<K, V> map = creator.apply(count);
+        for (int i = 0; i < count; i++) {
+            map.put(keyReader.read(in), valueReader.read(in));
+        }
+        return map;
+    }
+
     public static <T> void writeCollection(OutputStream out, Collection<T> ar, int count, WriterFunction<T> componentWriter) throws IOException {
         int size = ar != null ? ar.size() : 0;
         if (count == -1) {

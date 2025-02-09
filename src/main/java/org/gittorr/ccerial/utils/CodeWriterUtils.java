@@ -1,9 +1,8 @@
 package org.gittorr.ccerial.utils;
 
-import org.gittorr.ccerial.CcValue;
-
 import javax.lang.model.element.*;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.PrimitiveType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.Elements;
@@ -47,6 +46,11 @@ public final class CodeWriterUtils {
         return dtype.getTypeArguments().get(0);
     }
 
+    public static TypeMirror getTypeArgs(TypeMirror type, int argi) {
+        DeclaredType dtype = (DeclaredType) type;
+        return dtype.getTypeArguments().get(argi);
+    }
+
     public static boolean isWrapperType(TypeMirror typeMirror) {
         if (typeMirror.getKind() != TypeKind.DECLARED) {
             return false;
@@ -57,6 +61,14 @@ public final class CodeWriterUtils {
             return false;
         }
     }
+
+    public static TypeMirror wrapperFor(TypeMirror typeMirror) {
+        if (typeMirror.getKind().isPrimitive()) {
+            return typeUtils.boxedClass((PrimitiveType)typeMirror).asType();
+        }
+        return typeMirror;
+    }
+
     public static String readerFor(String typeName, boolean variable, boolean reader) {
         return readerFor(typeName, variable, false, reader);
     }
@@ -135,6 +147,11 @@ public final class CodeWriterUtils {
 
     public static boolean isCollection(TypeMirror typeMirror) {
         TypeMirror collectionType = elementUtils.getTypeElement(Collection.class.getCanonicalName()).asType();
+        return typeUtils.isAssignable(typeUtils.erasure(typeMirror), collectionType);
+    }
+
+    public static boolean isMap(TypeMirror typeMirror) {
+        TypeMirror collectionType = elementUtils.getTypeElement(Map.class.getCanonicalName()).asType();
         return typeUtils.isAssignable(typeUtils.erasure(typeMirror), collectionType);
     }
 

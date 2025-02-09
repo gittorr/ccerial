@@ -5,31 +5,31 @@ import java.util.*;
 public class CollectionUtils {
 
     public static <E> Collection<E> makeUnmodifiable(Collection<E> collection) {
-        return Collections.unmodifiableCollection(collection);
+        return collection == null ? null : Collections.unmodifiableCollection(collection);
     }
 
     public static <E> List<E> makeUnmodifiable(List<E> list) {
-        return Collections.unmodifiableList(list);
+        return list == null ? null : Collections.unmodifiableList(list);
     }
 
     public static <E> Set<E> makeUnmodifiable(Set<E> set) {
-        return Collections.unmodifiableSet(set);
+        return set == null ? null : Collections.unmodifiableSet(set);
     }
 
     public static <E> SortedSet<E> makeUnmodifiable(SortedSet<E> set) {
-        return Collections.unmodifiableSortedSet(set);
+        return set == null ? null : Collections.unmodifiableSortedSet(set);
     }
 
     public static <E> NavigableSet<E> makeUnmodifiable(NavigableSet<E> set) {
-        return Collections.unmodifiableNavigableSet(set);
+        return set == null ? null : Collections.unmodifiableNavigableSet(set);
     }
 
     public static <E> Queue<E> makeUnmodifiable(Queue<E> queue) {
-        return new UnmodifiableQueue<>(queue);
+        return queue == null ? null : new UnmodifiableQueue<>(queue);
     }
 
     public static <E> Deque<E> makeUnmodifiable(Deque<E> deque) {
-        return new UnmodifiableDeque<>(deque);
+        return deque == null ? null : new UnmodifiableDeque<>(deque);
     }
 
     // Additional classes for unmodifiable Queue and Deque

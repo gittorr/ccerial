@@ -52,17 +52,31 @@ public class ObjectArrayFieldAccessorWriter extends AbstractFieldAccessorWriter 
         String typeName = CodeWriterUtils.getTypeName(componentType);
         String componentClass = CodeWriterUtils.isInterfaceOrAbstractClass(componentType) ? "null" : (typeName + ".class");
         String writerMethodName = CodeWriterUtils.readerFor(typeName, variable, false);
+        String writerMethodNameVar = CodeWriterUtils.readerFor(typeName, true, true, false);
         boolean isObject = writerMethodName == null;
         boolean isArray  = CodeWriterUtils.isArray(componentType);
         boolean stringArray = typeName.equals("java.lang.String");
         String template = "\t\tBinaryUtils.writeGenericArray(out, obj.<accessorName>, <variableCount>, " +
                 "<if(isArray)>" +
-                    "(out2, v) -> BinaryUtils.<writerMethodName>(out2, v, <componentCount>)"+
+                    "(out2, v) -> " +
+                        "<if(!variable)>writeWithFeature(BinaryUtils::<writerMethodNameVar>, BinaryUtils::<writerMethodName>, " +
+                        "<else>BinaryUtils.<writerMethodName>(" +
+                        "<endif>" +
+                        "out2, v, <componentCount>)"+
                 "<else>" +
                     "<if(isObject)>" +
                         "(out2, v) -> BinaryUtils.writeObject(out2, v, <componentClass>, this)" +
                     "<else>"+
-                        "<if(stringArray)>BinaryUtils.createStringWriter(<componentCount>, \"<charset>\")<else>BinaryUtils::<writerMethodName><endif>" +
+                        "<if(stringArray)>BinaryUtils.createStringWriter(<if(!variable)>featureForceVariableSize ? -1 : <endif><componentCount>, \"<charset>\")" +
+                        "<else>" +
+                            "(out2, v) -> " +
+                            "<if(!variable)>" +
+                                "writeWithFeature(BinaryUtils::<writerMethodNameVar>, BinaryUtils::<writerMethodName>, " +
+                            "<else>" +
+                                "BinaryUtils.<writerMethodName>(" +
+                            "<endif>" +
+                            "out2, v)" +
+                        "<endif>" +
                     "<endif>" +
                 "<endif>);\n";
         ST st = new ST(template);
@@ -75,6 +89,7 @@ public class ObjectArrayFieldAccessorWriter extends AbstractFieldAccessorWriter 
         st.add("isArray", isArray);
         st.add("typeName", typeName);
         st.add("writerMethodName", writerMethodName);
+        st.add("writerMethodNameVar", writerMethodNameVar);
         st.add("componentCount", componentCount);
         st.add("componentClass", componentClass);
         out.write(st.render());
@@ -83,6 +98,8 @@ public class ObjectArrayFieldAccessorWriter extends AbstractFieldAccessorWriter 
     @Override
     public void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
         int variableCount = -1;
+        boolean nullIsEmpty = ccSerializable.nullIsZeroOrEmpty();
+        boolean variable = this.variable;
         CcArray annotation = CodeWriterUtils.getAnnotation(CcArray.class, fieldEl, accessorName, classElement);
         String ctorArgName = toCtorArgName(accessorName, isRecord);
         String setterName = toSetterName(accessorName, isRecord);
@@ -90,6 +107,8 @@ public class ObjectArrayFieldAccessorWriter extends AbstractFieldAccessorWriter 
         int componentCount = -1;
         if (annotation != null) {
             variableCount = annotation.count();
+            variable = annotation.count() == -1;
+            nullIsEmpty = annotation.nullIsEmpty();
             charset = annotation.stringCharsetName();
             componentCount = annotation.componentCount();
         }
@@ -97,24 +116,35 @@ public class ObjectArrayFieldAccessorWriter extends AbstractFieldAccessorWriter 
         String typeName = CodeWriterUtils.getTypeName(componentType);
         String componentClass = CodeWriterUtils.isInterfaceOrAbstractClass(componentType) ? "null" : (typeName + ".class");
         String readerMethodName = CodeWriterUtils.readerFor(typeName, variable, componentCount == -1, true);
+        String readerMethodNameVar = CodeWriterUtils.readerFor(typeName, true, true, true);
         boolean isObject = readerMethodName == null;
         boolean isArray  = CodeWriterUtils.isArray(componentType);
         boolean stringArray = typeName.equals("java.lang.String");
         String template = "\t\t<if(ctor)><typeName>[] <ctorArgName> = <else>obj.<setterName>(<endif>" +
+                "<if(variable)>nullIfEmptyOrZero(<endif>" +
                 "BinaryUtils.readGenericArray(in, <variableCount>, " +
                 "<if(isArray)>" +
-                    "(in2) -> BinaryUtils.<readerMethodName>(in2, <componentCount>)" +
+                    "(in2) -> <if(!variable)>featureForceVariableSize ? BinaryUtils.<readerMethodNameVar>(in2, -1) : <endif>BinaryUtils.<readerMethodName>(in2, <componentCount>)" +
                 "<else>" +
                     "<if(isObject)>" +
                         "(in2) -> BinaryUtils.readObject(in2, <componentClass>, this)" +
                     "<else>" +
-                        "<if(stringArray)>in1 -> BinaryUtils.<readerMethodName>(in1, <componentCount>, \"<charset>\")<else>BinaryUtils::<readerMethodName><endif>" +
+                        "<if(stringArray)>in1 -> BinaryUtils.<readerMethodName>(in1, <if(!variable)>featureForceVariableSize ? -1 : <endif><componentCount>, \"<charset>\")" +
+                        "<else>" +
+                            "(in2) -> " +
+                            "<if(!variable)>" +
+                                "featureForceVariableSize ? BinaryUtils.<readerMethodNameVar>(in2) :" +
+                            "<endif>" +
+                            "BinaryUtils.<readerMethodName>(in2)" +
+                        "<endif>" +
                     "<endif>" +
                 "<endif>, " +
                 "<typeName>[]::new)" +
+                "<if(variable)>, <nullIsEmpty>)<endif>" +
                 "<if(!ctor)>)<endif>;\n";
         ST st = new ST(template);
         st.add("variable", variable);
+        st.add("nullIsEmpty", nullIsEmpty);
         st.add("stringArray", stringArray);
         st.add("charset", charset);
         st.add("accessorName", accessorName);
@@ -126,6 +156,7 @@ public class ObjectArrayFieldAccessorWriter extends AbstractFieldAccessorWriter 
         st.add("setterName", setterName);
         st.add("ctor", ccSerializable.accessorType() == AccessorType.CONSTRUCTOR);
         st.add("readerMethodName", readerMethodName);
+        st.add("readerMethodNameVar", readerMethodNameVar);
         st.add("componentCount", componentCount);
         st.add("componentClass", componentClass);
         out.write(st.render());

@@ -47,6 +47,11 @@ public @interface CcEnum {
     int count() default -1;
 
     /**
+     * In case the enum is serialized as a string, and it is empty then it deserializes to null
+     */
+    boolean nullIsEmpty() default false;
+
+    /**
      * Defines the character encoding to be used when serializing the enum as a string.
      * This applies when the enum is stored as a string representation.
      *

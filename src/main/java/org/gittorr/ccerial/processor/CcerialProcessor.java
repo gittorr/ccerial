@@ -69,8 +69,8 @@ public class CcerialProcessor extends AbstractProcessor {
                 // Write the code of the generated class
                 try (Writer writer = sourceFile.openWriter()) {
                     writer.write("package ccerial." + packageName + ";\n\n");
-                    writer.write("import org.gittorr.ccerial.utils.AbstractSerializer;\n");
-                    writer.write("import org.gittorr.ccerial.utils.BinaryUtils;\n\n");
+                    writer.write("import org.gittorr.ccerial.*;\n");
+                    writer.write("import org.gittorr.ccerial.utils.*;\n");
                     writer.write("public class " + generatedClassName.substring(packageName.length() + 9) + " extends AbstractSerializer<"+className+"> {\n");
 
                     // Generate serialization method

@@ -50,14 +50,17 @@ public final class FieldAccessorWriterManager {
             return new ArrayFieldAccessorWriter(kind, variable, getTypeName(type));
         } else if (kind.isPrimitive() || (kind == TypeKind.DECLARED && CodeWriterUtils.isWrapperType(type))) {
             typeName = getTypeName(type);
-            return new SimpleFieldAccessorWriter(kind, variable, typeName);
+            return new PrimitiveFieldAccessorWriter(kind, variable, typeName);
         } else if (kind == TypeKind.DECLARED && CodeWriterUtils.isCollection(type)) {
             typeName = getTypeName(type);
             TypeMirror componentType = CodeWriterUtils.getCollectionComponentType(type);
             return new CollectionFieldAccessorWriter(kind, variable, typeName, componentType);
+        } else if (kind == TypeKind.DECLARED && CodeWriterUtils.isMap(type)) {
+            typeName = getTypeName(type);
+            return new MapFieldAccessorWriter(kind, variable, typeName);
         } else if (kind.isPrimitive()) {
             typeName = getTypeName(type);
-            return new SimpleFieldAccessorWriter(kind, variable, typeName);
+            return new PrimitiveFieldAccessorWriter(kind, variable, typeName);
         } else if (CodeWriterUtils.isEnum(type)) {
             typeName = getTypeName(type);
             return new SimpleEnumFieldAccessorWriter(kind, variable, typeName);

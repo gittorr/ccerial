@@ -70,6 +70,7 @@ public class SimpleEnumFieldAccessorWriter extends AbstractFieldAccessorWriter {
     public void writeReader(Writer out, String accessorName, Element fieldEl, CcSerializable ccSerializable, boolean isRecord, Element classElement) throws IOException {
         EnumType value = EnumType.ORDINAL;
         int count = this.variable ? -1 : 0;
+        boolean nullIsEmpty = ccSerializable.nullIsZeroOrEmpty();
         String stringCharsetName = "UTF-8";
         boolean stringAsCharArray = false;
 
@@ -78,6 +79,7 @@ public class SimpleEnumFieldAccessorWriter extends AbstractFieldAccessorWriter {
         if (enumAnnot != null) {
             value = enumAnnot.value();
             count = enumAnnot.count();
+            nullIsEmpty = enumAnnot.nullIsEmpty();
             stringCharsetName = enumAnnot.stringCharsetName();
             stringAsCharArray = enumAnnot.stringAsCharArray();
         }
@@ -88,14 +90,25 @@ public class SimpleEnumFieldAccessorWriter extends AbstractFieldAccessorWriter {
         String setterName = toSetterName(accessorName, isRecord);
         String typeName = value == EnumType.ORDINAL ? "int" : (stringAsCharArray ? "char[]" : "java.lang.String");
 
-        String template = "\t\t<if(ctor)><typeName> <ctorArgName> = <else>obj.<setterName>(<endif>" +
-                "<if(isString)><typeName>.valueOf(<else><typeName>.values()[<endif>" +
-                "BinaryUtils.<readerMethodName>(in<if(isString)>, <count><if(!stringAsCharArray)>, \"<charset>\"<endif><endif>)" +
-                "<if(isString)>)<else>]<endif>" +
+        String template = "\t\t" +
+                "<if(ctor)><typeName> <ctorArgName> = <else>obj.<setterName>(<endif>" +
+                "<if(isString)>" +
+                    "<if(variable)>nullIfEmptyOrZero(<typeName>::valueOf,<else><typeName>.valueOf(<endif>" +
+                "<else><typeName>.values()[<endif>" +
+                "<if(isString)>" +
+                    "<if(stringAsCharArray)>new String(<endif>" +
+                    "BinaryUtils.<readerMethodName>(in, <count><if(!stringAsCharArray)>, \"<charset>\"<endif>)" +
+                    "<if(stringAsCharArray)>)<endif>" +
+                    "<if(variable)>, <nullIsEmpty>)<else>)<endif>" +
+                "<else>" +
+                    "<if(!variable)>featureForceVariableSize ? BinaryUtils.<readerMethodNameVar>(in) : <endif>BinaryUtils.<readerMethodName>(in)]" +
+                "<endif>" +
                 "<if(!ctor)>)<endif>;\n";
         String readerMethodName = CodeWriterUtils.readerFor(typeName, variable, true);
+        String readerMethodNameVar = CodeWriterUtils.readerFor(typeName, true, true);
         ST st = new ST(template);
         st.add("variable", variable);
+        st.add("nullIsEmpty", nullIsEmpty);
         st.add("count", count);
         st.add("accessorName", accessorName);
         st.add("charset", stringCharsetName);
@@ -106,6 +119,7 @@ public class SimpleEnumFieldAccessorWriter extends AbstractFieldAccessorWriter {
         st.add("ctor", ccSerializable.accessorType() == AccessorType.CONSTRUCTOR);
         st.add("stringAsCharArray", stringAsCharArray);
         st.add("readerMethodName", readerMethodName);
+        st.add("readerMethodNameVar", readerMethodNameVar);
         out.write(st.render());
     }
 

@@ -21,25 +21,16 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
-import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collection;
 
 /**
- * Override the default behavior for arrays, collections or strings
+ * Override the default behavior for maps
  */
 @Target({ElementType.FIELD, ElementType.METHOD, ElementType.RECORD_COMPONENT})
 @Retention(RetentionPolicy.CLASS)
-public @interface CcArray {
+public @interface CcMap {
 
     /**
-     * Define a fixed size for an array, collection or string
-     */
-    int count() default -1;
-
-    /**
-     * If the array or the string is empty then it deserializes to null
+     * If the map is empty then it deserializes to null
      */
     boolean nullIsEmpty() default false;
 
@@ -54,18 +45,28 @@ public @interface CcArray {
     boolean stringAsCharArray() default false;
 
     /**
-     * Define a fixed size for the components an array or collection
+     * Define a fixed size for the map
      */
-    int componentCount() default -1;
+    int count() default -1;
 
     /**
-     * The collection implementation for collections. Default is Collection, Ccerial will determine automatically
+     * Define a fixed size for the keys of the map
      */
-    String collectionImpl() default "java.util.Collection";
+    int keyCount() default -1;
 
     /**
-     * After reading turns the collection into an unmodifiable one
+     * Define a fixed size for the values of the map
      */
-    boolean unmodifiableCollection() default false;
+    int valueCount() default -1;
+
+    /**
+     * The map implementation. Default is Map, Ccerial will determine automatically
+     */
+    String mapImpl() default "java.util.Map";
+
+    /**
+     * After reading turns the map into an unmodifiable one
+     */
+    boolean unmodifiableMap() default false;
 
 }

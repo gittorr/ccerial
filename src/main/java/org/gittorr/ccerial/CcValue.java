@@ -45,7 +45,7 @@ public @interface CcValue {
      *
      * @return {@code true} to replace zero or empty values with {@code null}, {@code false} otherwise.
      */
-    boolean nullIsZeroOrEmpty() default true;
+    boolean nullIsZeroOrEmpty() default false;
 
     /**
      * Specifies the implementing class name when the field type is an abstract class or an interface.
